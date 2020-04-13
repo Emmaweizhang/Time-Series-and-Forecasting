@@ -1,0 +1,188 @@
+---
+title: "S3759607 TS"
+author: "Wei Zhang"
+date: "11/04/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Introduction
+We are treating it as a deterministic trend in Task 1 while we are treating it as a stochastic trend in Task 2.  You will have to use the residual diagnostics covered in Module 2 for Task 1
+## Load required packages
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(TSA)
+```
+## Read the dataset
+Read this dataset into Rstudio from original CSV file. This dataframe is then converted to time series object. After plotting this time series data, we can see the following characteristics:
+- There is a downward trend in the data
+- Slight repetitive patterns over time
+- Some changing variation through time
+- Moving average and autoregressive behaviours are obvious
+- No intervention point noted
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+data <- read.csv("data1.csv", header = FALSE)
+class(data)
+data_ts <- ts(data, start = 1927, end = 2016)
+plot(data_ts, type = 'o', ylab = 'Yearly Changes in Dobson units', main = 'Time Series Plot of Yearly Changes in the Thickness of Ozone Layer')
+```
+
+## Linear trend model
+Suppose this plot is a linear time trend. With least-squares regression a linear trend model is fitted. According to the regression output, the estimates of intercept and slope are 213.72 and -0.11.  They are both statistically significant. Adjusted R-squared is 0.6655 which is a bit low. 
+
+The residual points look quite randomly spreaded.Histogram and qqplot shows that the residuals are not perfect normal distribution but Shapiro-Wilk test (p-value = 0.5372) failed to reject the null hypothesis that the stochastic component of model1 is normally distributed.
+The independence test (p value = 9.7e-06) reject the null hypothesis that the stochastic component is independent. Sample autocorrelation function shows that there is correlation at lag 1.
+Therefore, linear trend model is not good enough.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+model1 = lm(data_ts~time(data_ts))
+summary(model1)   # Significant. Adjusted R-squared:0.6655. 
+plot(data_ts, type='o', ylab='y', main='Time Series Plot for Yearly Changes in the Thickness of Ozone Layer with linear model')
+abline(model1)
+
+res.model1 = rstudent(model1)
+plot(y = res.model1, x = as.vector(time(data_ts)),xlab = 'Time', ylab='Standardized Residuals of model1',type='p')
+hist(res.model1, xlab = 'Standardized Residuals')
+qqnorm(res.model1)
+qqline(res.model1, col=2, lwd=1, lty=2)     # Not normally distributed enough
+shapiro.test(res.model1)      #p-value = 0.5372
+runs(res.model1)            # p-value = 9.7e-06
+acf(res.model1)          # Autocorrelation at lag 1
+```
+## Quadratic trend model
+Again with the least squares approach, a quadratic time trend is fitted to the ozone thickness time series. Based on the output, this model is significant and the R-squared (0.7331) is better than that of liner model. 
+
+The model lines looks like a better fit than linear model and residual points look quite randomly spreaded.
+In terms of the residuals, histogram and qqplot are not very encouraging although the normal distribution hypothesis is not rejected by shapiro test (p-value = 0.6493). Also, the independence test (p value = 6.89e-05) reject the null hypothesis that the stochastic component is independent. Lastly, ACF indicates that there is autocorrelation at lag 1, lag 3 and lag4.
+Therefore, we conclude that the quadratic model is better than linear model but we still move on to check other models.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+t = time(data_ts)
+t2 = t^2
+model2 = lm(data_ts~t+t2)
+summary(model2)
+plot(ts(fitted(model2)), ylim=c(min(c(fitted(model2), as.vector(data_ts))), max(c(fitted(model2), as.vector(data_ts)))), ylab='y', main = "Fitted Quadratic Curve to Ozone Thickness data")
+lines(as.vector(data_ts),type="o")
+
+res.model2 = rstudent(model2)
+plot(y = res.model2, x = as.vector(time(data_ts)),xlab = 'Time', ylab='Studentized Residuals of model2',type='p')
+abline(h=0)
+
+hist(res.model2, xlab = 'Standardized Residuals')
+qqnorm(res.model2)
+qqline(res.model2, col=2, lwd=1, lty=2)   # Not normally distributed
+shapiro.test(res.model2)   # p-value = 0.6493
+runs(res.model2)   # p-value = 6.89e-05
+acf(res.model2)   # autocorrelation at lag 1, lag 3 and lag4
+```
+
+## Cyclical model
+As there is a slight repetitive pattern noted in the time series plot and the data is yearly. Cyclical trend model is fitted. First, we assume the pattern happens every 6 years. By plotting the cyclical model against original plots, it's easy to see that the model has no trend and does not capture the data well. R-squared is only 0.4202.
+
+Then we combine the cyclical model and quadratic trend model. The combined model has an adjusted R-squared of 0.8517, which is much better than the cyclical model alone.
+
+The combination model lines looks like a better fit than cyclical model and residual points look quite randomly spreaded.
+Histogram and qqplot shows normal distribution and this is confirmed by shapiro test (p-value = 0.3578). However, the independence test (p value = 6.89e-05) reject the null hypothesis that the stochastic component is independent. ACF indicates that there is autocorrelation at lag 1, lag 3 and lag4.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# Assume the yearly data repeat itself every 6 years.
+data_sea6 = ts(as.vector(matrix(data$V1, nrow = 15, ncol = 6)), frequency = 6)
+plot(data_sea6, type = 'o')
+seas = season(data_sea6)
+model3 = lm(data_sea6~seas-1)
+summary(model3)   # Coefficients are statistically significant at 5% confidence level. R-squared: 0.4202
+plot(ts(fitted(model3)),ylim=c(min(c(fitted(model3), as.vector(data_sea6))), max(c(fitted(model3), as.vector(data_sea6)))), ylab='y', main = "Fitted Cyclical model to Ozone Thickness data")
+lines(as.vector(data_sea6), type = 'o')     # model3 does not capture the data
+
+# Quadratic model is introduced.
+t = time(data_sea6)
+t2 = t^2
+model3.1 = lm(data_sea6~seas+t+t2-1)
+summary(model3.1)   #Adjusted R-squared:0.8517 
+plot(ts(fitted(model3.1)),ylim=c(min(c(fitted(model3.1), as.vector(data_sea6))), max(c(fitted(model3.1), as.vector(data_sea6)))), ylab='y', main = "Fitted Cyclical Curve to Ozone Thickness data (6)")
+lines(as.vector(data_sea6), type = 'o')
+
+res.model3.1 = rstudent(model3.1)
+plot(y = res.model3.1, x = as.vector(time(data_sea6)),xlab = 'Time', ylab='Studentized Residuals of model3.1',type='p')
+abline(h=0)
+
+hist(res.model3.1, xlab = 'Standardized Residuals')
+qqnorm(res.model3.1)
+qqline(res.model3.1, col=2, lwd=1, lty=2)    # normal distribution
+shapiro.test(res.model3.1)    #p-value = 0.3578
+runs(res.model3.1)     #p-value = 6.98e-05
+acf(res.model3.1)     # autocorrelation at lag 1, lag 3 and lag4
+```
+
+This might be because we set the wrong frequency. Let's change the frequency to 7 and try the cyclic-quadratic model again. This model has adjusted R-squared as 0.8538, which is slightly better than before.
+
+Residual check shows normal distribution on qqplot but not on histogram. Shapiro test (p-value = 3.658e-06) is signigicant so reject the normal distribution hypothesis. However, the independence test (p value = p-value = 0.000372) reject the null hypothesis that the stochastic component is independent. ACF indicates that there is autocorrelation at lag 1, lag 3 and lag4. The residuals are neither normally distributed nor independent. Therefore, we decide to set the frequency as 6 still.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+data_sea7 = ts(as.vector(matrix(data$V1, ncol = 7)), frequency = 7)
+seas = season(data_sea7)
+t = time(data_sea7)
+t2 = t^2
+model3.2 = lm(data_sea7~seas+t+t2-1)
+summary(model3.2)   #Adjusted R-squared:  0.796
+plot(ts(fitted(model3.2)),ylim=c(min(c(fitted(model3.2), as.vector(data_sea7))), max(c(fitted(model3.2), as.vector(data_sea7)))), ylab='y', main = "Fitted Cyclical Curve to Ozone Thickness data (7)")
+lines(as.vector(data_sea7), type = 'o')
+
+res.model3.2 = rstudent(model3.2)
+plot(y = res.model3.2, x = as.vector(time(data_sea7)),xlab = 'Time', ylab='Studentized Residuals of model3.2',type='p')
+abline(h=0)
+
+hist(res.model3.2, xlab = 'Standardized Residuals')
+qqnorm(res.model3.2)
+qqline(res.model3.2, col=2, lwd=1, lty=2)    # normal distribution
+shapiro.test(res.model3.2)    #p-value = 3.658e-06
+runs(res.model3.2)     #p-value = 0.000372
+acf(res.model3.2)     # autocorrelation at lag 1, lag 3 and lag4
+```
+
+
+## Cosine trend
+Lastly, we try the cosine trend model combined with quadratic model. Based on the summary of this model, the coefficients are not significant and adjusted R-squared is 0.7317. 
+Residual check: Histogram and qqplot shows normal distribution and this is confirmed by shapiro test (p-value = 0.6206). However, the independence test (p value = 0.000424) reject the null hypothesis that the stochastic component is independent. ACF indicates that there is autocorrelation at lag 1, lag 3 and lag4.
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+har.=harmonic(data_sea6, 1)
+t = time(data_sea6)
+t2 = t^2
+model4=lm(data_sea6~har.+t+t2)
+summary(model4)  # Adjusted R-squared:  0.7317
+
+plot(ts(fitted(model4), frequency = 6), ylab='y', type = 'l', ylim=range(c(fitted(model4), data_sea6)), main = "Fitted Cosine trend model to Ozone Thickness data")
+points(data_sea6)
+
+res.model4 = rstudent(model4)
+hist(res.model4, xlab = 'Standardized Residuals')
+qqnorm(res.model4)
+qqline(res.model4, col=2, lwd=1, lty=2)
+shapiro.test(res.model4)   #p-value = 0.6206
+runs(res.model4)   #p-value = 0.000424
+acf(res.model4)  # autocorrelation at lag 1, lag 3 and lag4
+```
+
+## Prediction
+All in all, no perfect model is found so far. Autocorrelations are found in the residuals of all models explored. Cosine model has insignificant coefficients. Quadratic-cyclic combined model has a higher R-squared that of linear and cyclic model. Between quadratic-cyclic trend model and quadratic trend model, we use the quadratic trend model for prediction based on the principle of parsimony.
+Based on the output using predict() function, the yearly changes for the next five years with 95% confidence are: -10.34387, -10.59469, -10.84856, -11.10550 and -11.36550.
+     fit       lwr       upr
+1 -10.34387 -14.13556 -6.552180
+2 -10.59469 -14.40282 -6.786548
+3 -10.84856 -14.67434 -7.022786
+4 -11.10550 -14.95015 -7.260851
+5 -11.36550 -15.23030 -7.500701
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+t = time(data_ts)
+t2 = t^2
+# Predict the data for the next five years
+forecasts <- predict.lm(model2, data.frame(t=c(2017,2018,2019,2020,2021), t2=c(2017^2,2018^2,2019^2,2020^2,2021^2)), interval = "prediction" )
+```
+
+## Propose a set of possible ARIMA(p, d, q) models
+Propose a set of possible ARIMA(p, d, q) models using all suitable model specification tools covered in Module 5. ARMA models are explained in Module 3 and ARIMA models are explained in Module 4. In this task, you should demonstrate use of each model specification tool such as ACF-PACF, EACF, BIC table clearly and give clear comments to back up your choices of (p, d, q) orders.
+
+
+```{r pressure, echo=FALSE}
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
